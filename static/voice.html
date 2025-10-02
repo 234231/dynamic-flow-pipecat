@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Pipecat Call</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 50px;
+    }
+
+    #callBtn {
+      font-size: 20px;
+      padding: 15px 30px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      background-color: #28a745;
+      color: white;
+    }
+
+    #callBtn.hangup {
+      background-color: #dc3545;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>Pipecat AI Caller</h2>
+  <button id="callBtn">Start Call</button>
+  <audio id="remoteAudio" autoplay></audio>
+
+  <script>
+    let pc = null;
+    let localStream = null;
+    let callActive = false;
+
+    async function startCall() {
+      pc = new RTCPeerConnection();
+
+      // Play remote audio
+      const remoteAudio = document.getElementById("remoteAudio");
+      pc.ontrack = (event) => {
+        remoteAudio.srcObject = event.streams[0];
+      };
+
+      // Get mic and add track
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+      // Create SDP offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // Send offer to server
+      const response = await fetch("/api/offer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sdp: offer.sdp,
+          type: "offer"
+        }),
+      });
+      const answer = await response.json();
+      await pc.setRemoteDescription(answer);
+
+
+      console.log("Call connected ✅");
+    }
+
+    function hangupCall() {
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
+      console.log("Call ended ❌");
+    }
+
+    document.getElementById("callBtn").onclick = async function () {
+      const btn = document.getElementById("callBtn");
+      if (!callActive) {
+        await startCall();
+        callActive = true;
+        btn.textContent = "Hang Up";
+        btn.classList.add("hangup");
+      } else {
+        hangupCall();
+        callActive = false;
+        btn.textContent = "Start Call";
+        btn.classList.remove("hangup");
+      }
+    };
+  </script>
+</body>
+
+</html>
